@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Geist } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/sidebar";
 import { Toaster } from "sonner";
+import { cn } from "@/lib/utils";
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -17,7 +20,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" className={cn("font-sans", geist.variable)}>
       <body className={inter.className}>
         <Sidebar />
         <main className="ml-64 min-h-screen bg-background p-6">

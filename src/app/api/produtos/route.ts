@@ -1,37 +1,46 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebase";
 import { produtoSchema } from "@/lib/validators";
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const busca = searchParams.get("busca") || "";
+    const busca = (searchParams.get("busca") || "").toLowerCase();
     const estoqueBaixo = searchParams.get("estoqueBaixo") === "true";
 
-    const where: any = { ativo: true };
+    const snapshot = await db
+      .collection("produtos")
+      .where("ativo", "==", true)
+      .orderBy("nome")
+      .get();
+
+    let produtos = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
 
     if (busca) {
-      where.OR = [
-        { nome: { contains: busca, mode: "insensitive" } },
-        { ean: { contains: busca } },
-        { codigoBarras: { contains: busca } },
-        { categoria: { contains: busca, mode: "insensitive" } },
-      ];
+      produtos = produtos.filter((p: any) => {
+        const nome = (p.nome || "").toLowerCase();
+        const ean = (p.ean || "").toLowerCase();
+        const codigoBarras = (p.codigoBarras || "").toLowerCase();
+        const categoria = (p.categoria || "").toLowerCase();
+        return (
+          nome.includes(busca) ||
+          ean.includes(busca) ||
+          codigoBarras.includes(busca) ||
+          categoria.includes(busca)
+        );
+      });
     }
 
-    const produtos = await prisma.produto.findMany({
-      where,
-      include: { fornecedor: true },
-      orderBy: { nome: "asc" },
-    });
+    if (estoqueBaixo) {
+      produtos = produtos.filter(
+        (p: any) => Number(p.estoqueAtual) <= Number(p.estoqueMinimo)
+      );
+    }
 
-    const resultado = estoqueBaixo
-      ? produtos.filter(
-          (p) => Number(p.estoqueAtual) <= Number(p.estoqueMinimo)
-        )
-      : produtos;
-
-    return NextResponse.json(resultado);
+    return NextResponse.json(produtos);
   } catch (error) {
     console.error("Erro ao buscar produtos:", error);
     return NextResponse.json(
@@ -51,25 +60,29 @@ export async function POST(request: NextRequest) {
         ? ((validated.precoVenda - validated.precoCusto) / validated.precoCusto) * 100
         : 0;
 
-    const produto = await prisma.produto.create({
-      data: {
-        nome: validated.nome,
-        descricao: validated.descricao || null,
-        codigoBarras: validated.codigoBarras || null,
-        ean: validated.ean || null,
-        ncm: validated.ncm || null,
-        unidade: validated.unidade,
-        precoCusto: validated.precoCusto,
-        precoVenda: validated.precoVenda,
-        margemLucro: Math.round(margemLucro * 100) / 100,
-        estoqueAtual: validated.estoqueAtual,
-        estoqueMinimo: validated.estoqueMinimo,
-        fornecedorId: validated.fornecedorId || null,
-        categoria: validated.categoria || null,
-      },
-    });
+    const now = new Date().toISOString();
+    const data = {
+      nome: validated.nome,
+      descricao: validated.descricao || null,
+      codigoBarras: validated.codigoBarras || null,
+      ean: validated.ean || null,
+      ncm: validated.ncm || null,
+      unidade: validated.unidade,
+      precoCusto: validated.precoCusto,
+      precoVenda: validated.precoVenda,
+      margemLucro: Math.round(margemLucro * 100) / 100,
+      estoqueAtual: validated.estoqueAtual,
+      estoqueMinimo: validated.estoqueMinimo,
+      fornecedorId: validated.fornecedorId || null,
+      categoria: validated.categoria || null,
+      ativo: true,
+      criadoEm: now,
+      atualizadoEm: now,
+    };
 
-    return NextResponse.json(produto, { status: 201 });
+    const docRef = await db.collection("produtos").add(data);
+
+    return NextResponse.json({ id: docRef.id, ...data }, { status: 201 });
   } catch (error: any) {
     if (error.name === "ZodError") {
       return NextResponse.json(

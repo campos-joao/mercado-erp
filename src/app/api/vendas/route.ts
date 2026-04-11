@@ -1,20 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebase";
+import { FieldValue } from "firebase-admin/firestore";
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const limite = parseInt(searchParams.get("limite") || "50");
 
-    const vendas = await prisma.venda.findMany({
-      include: {
-        itens: {
-          include: { produto: true },
-        },
-      },
-      orderBy: { dataVenda: "desc" },
-      take: limite,
-    });
+    const snapshot = await db
+      .collection("vendas")
+      .orderBy("dataVenda", "desc")
+      .limit(limite)
+      .get();
+
+    const vendas = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
 
     return NextResponse.json(vendas);
   } catch (error) {
@@ -38,18 +40,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const venda = await prisma.$transaction(async (tx) => {
+    // Usar transação do Firestore para garantir atomicidade
+    const venda = await db.runTransaction(async (transaction) => {
       let valorTotal = 0;
+      const itensProcessados: any[] = [];
 
-      const itensProcessados = [];
       for (const item of itens) {
-        const produto = await tx.produto.findUnique({
-          where: { id: item.produtoId },
-        });
+        const produtoRef = db.collection("produtos").doc(item.produtoId);
+        const produtoDoc = await transaction.get(produtoRef);
 
-        if (!produto) {
+        if (!produtoDoc.exists) {
           throw new Error(`Produto ${item.produtoId} não encontrado`);
         }
+
+        const produto = produtoDoc.data()!;
 
         if (Number(produto.estoqueAtual) < item.quantidade) {
           throw new Error(
@@ -63,44 +67,49 @@ export async function POST(request: NextRequest) {
 
         itensProcessados.push({
           produtoId: item.produtoId,
+          produtoNome: produto.nome,
           quantidade: item.quantidade,
           precoUnitario: Number(produto.precoVenda),
           desconto: item.desconto || 0,
           subtotal,
         });
 
-        await tx.produto.update({
-          where: { id: item.produtoId },
-          data: {
-            estoqueAtual: {
-              decrement: item.quantidade,
-            },
-          },
+        // Decrementar estoque
+        transaction.update(produtoRef, {
+          estoqueAtual: FieldValue.increment(-item.quantidade),
+          atualizadoEm: new Date().toISOString(),
         });
       }
 
       const desconto = valorDesconto || 0;
       const valorFinal = valorTotal - desconto;
 
-      const novaVenda = await tx.venda.create({
-        data: {
-          valorTotal,
-          valorDesconto: desconto,
-          valorFinal,
-          formaPagamento: formaPagamento || null,
-          observacoes: observacoes || null,
-          itens: {
-            create: itensProcessados,
-          },
-        },
-        include: {
-          itens: {
-            include: { produto: true },
-          },
-        },
-      });
+      // Gerar número da venda via contador
+      const contadorRef = db.collection("contadores").doc("vendas");
+      const contadorDoc = await transaction.get(contadorRef);
+      const numeroVenda = contadorDoc.exists
+        ? (contadorDoc.data()!.atual || 0) + 1
+        : 1;
+      transaction.set(contadorRef, { atual: numeroVenda });
 
-      return novaVenda;
+      const now = new Date().toISOString();
+      const vendaData = {
+        numeroVenda,
+        dataVenda: now,
+        valorTotal,
+        valorDesconto: desconto,
+        valorFinal,
+        formaPagamento: formaPagamento || null,
+        status: "finalizada",
+        observacoes: observacoes || null,
+        itens: itensProcessados,
+        criadoEm: now,
+      };
+
+      const vendaRef = db.collection("vendas").doc();
+      transaction.set(vendaRef, vendaData);
+
+      return { id: vendaRef.id, ...vendaData };
     });
 
     return NextResponse.json(venda, { status: 201 });

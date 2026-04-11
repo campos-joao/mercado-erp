@@ -6,9 +6,10 @@ Sistema de Gestão de Mercado (ERP de Varejo) com entrada automática de estoque
 
 - **Framework:** Next.js 14+ (App Router)
 - **UI/UX:** Shadcn UI, Tailwind CSS, Lucide React
-- **Backend/Banco:** Supabase (Auth, PostgreSQL, Storage)
-- **ORM:** Prisma
+- **Banco de Dados:** Google Cloud Firestore (NoSQL)
+- **Backend:** Firebase Admin SDK
 - **Validação:** Zod
+- **Deploy:** Vercel
 - **IA (futuro):** OpenAI/Anthropic via Vercel AI SDK
 
 ## Como Rodar
@@ -19,10 +20,8 @@ npm install
 
 # Copiar variáveis de ambiente
 cp .env.local.example .env.local
-# Editar .env.local com suas credenciais do Supabase
-
-# Gerar cliente Prisma
-npx prisma generate
+# Editar .env.local com suas credenciais do Firebase
+# (Firebase Console → Project Settings → Service accounts → Generate new private key)
 
 # Rodar em desenvolvimento
 npm run dev
@@ -58,18 +57,22 @@ src/
 │   └── confirm-dialog.tsx            # Modal de confirmação de exclusão
 └── lib/
     ├── utils.ts                      # cn, formatCurrency, formatDate, formatCNPJ
-    ├── prisma.ts                     # Cliente Prisma (singleton)
+    ├── firebase.ts                   # Firebase Admin SDK (singleton)
     ├── validators.ts                 # Schemas Zod (produto, fornecedor)
     └── nfe-parser.ts                 # Parser de XML de NF-e (fast-xml-parser)
 ```
 
 ## Banco de Dados
 
-O arquivo `schema.sql` contém toda a estrutura do banco. Execute no Supabase SQL Editor ou use Prisma:
+O Firestore é NoSQL e não requer migrations. As collections são criadas automaticamente ao inserir o primeiro documento.
 
-```bash
-npx prisma db push
-```
+**Collections:**
+- `produtos` — Cadastro de produtos
+- `fornecedores` — Cadastro de fornecedores
+- `vendas` — Vendas com itens embutidos
+- `entradas_nfe` — Entradas de NF-e com itens embutidos
+- `mapeamento_produtos` — Mapeamento de-para (NF-e → produto)
+- `contadores` — Auto-incremento de número da venda
 
 ## Funcionalidades do MVP (Sprint 1)
 

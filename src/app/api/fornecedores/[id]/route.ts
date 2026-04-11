@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebase";
 import { fornecedorSchema } from "@/lib/validators";
 
 export async function GET(
@@ -7,18 +7,16 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const fornecedor = await prisma.fornecedor.findUnique({
-      where: { id: params.id },
-    });
+    const doc = await db.collection("fornecedores").doc(params.id).get();
 
-    if (!fornecedor) {
+    if (!doc.exists) {
       return NextResponse.json(
         { error: "Fornecedor não encontrado" },
         { status: 404 }
       );
     }
 
-    return NextResponse.json(fornecedor);
+    return NextResponse.json({ id: doc.id, ...doc.data() });
   } catch (error) {
     console.error("Erro ao buscar fornecedor:", error);
     return NextResponse.json(
@@ -38,23 +36,23 @@ export async function PUT(
 
     const cnpjLimpo = validated.cnpj.replace(/\D/g, "");
 
-    const fornecedor = await prisma.fornecedor.update({
-      where: { id: params.id },
-      data: {
-        razaoSocial: validated.razaoSocial,
-        nomeFantasia: validated.nomeFantasia || null,
-        cnpj: cnpjLimpo,
-        inscricaoEstadual: validated.inscricaoEstadual || null,
-        telefone: validated.telefone || null,
-        email: validated.email || null,
-        endereco: validated.endereco || null,
-        cidade: validated.cidade || null,
-        uf: validated.uf || null,
-        cep: validated.cep || null,
-      },
-    });
+    const data = {
+      razaoSocial: validated.razaoSocial,
+      nomeFantasia: validated.nomeFantasia || null,
+      cnpj: cnpjLimpo,
+      inscricaoEstadual: validated.inscricaoEstadual || null,
+      telefone: validated.telefone || null,
+      email: validated.email || null,
+      endereco: validated.endereco || null,
+      cidade: validated.cidade || null,
+      uf: validated.uf || null,
+      cep: validated.cep || null,
+      atualizadoEm: new Date().toISOString(),
+    };
 
-    return NextResponse.json(fornecedor);
+    await db.collection("fornecedores").doc(params.id).update(data);
+
+    return NextResponse.json({ id: params.id, ...data });
   } catch (error: any) {
     if (error.name === "ZodError") {
       return NextResponse.json(
@@ -75,9 +73,9 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await prisma.fornecedor.update({
-      where: { id: params.id },
-      data: { ativo: false },
+    await db.collection("fornecedores").doc(params.id).update({
+      ativo: false,
+      atualizadoEm: new Date().toISOString(),
     });
 
     return NextResponse.json({ message: "Fornecedor desativado com sucesso" });

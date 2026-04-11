@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebase";
 import { produtoSchema } from "@/lib/validators";
 
 export async function GET(
@@ -7,19 +7,16 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const produto = await prisma.produto.findUnique({
-      where: { id: params.id },
-      include: { fornecedor: true },
-    });
+    const doc = await db.collection("produtos").doc(params.id).get();
 
-    if (!produto) {
+    if (!doc.exists) {
       return NextResponse.json(
         { error: "Produto não encontrado" },
         { status: 404 }
       );
     }
 
-    return NextResponse.json(produto);
+    return NextResponse.json({ id: doc.id, ...doc.data() });
   } catch (error) {
     console.error("Erro ao buscar produto:", error);
     return NextResponse.json(
@@ -42,26 +39,26 @@ export async function PUT(
         ? ((validated.precoVenda - validated.precoCusto) / validated.precoCusto) * 100
         : 0;
 
-    const produto = await prisma.produto.update({
-      where: { id: params.id },
-      data: {
-        nome: validated.nome,
-        descricao: validated.descricao || null,
-        codigoBarras: validated.codigoBarras || null,
-        ean: validated.ean || null,
-        ncm: validated.ncm || null,
-        unidade: validated.unidade,
-        precoCusto: validated.precoCusto,
-        precoVenda: validated.precoVenda,
-        margemLucro: Math.round(margemLucro * 100) / 100,
-        estoqueAtual: validated.estoqueAtual,
-        estoqueMinimo: validated.estoqueMinimo,
-        fornecedorId: validated.fornecedorId || null,
-        categoria: validated.categoria || null,
-      },
-    });
+    const data = {
+      nome: validated.nome,
+      descricao: validated.descricao || null,
+      codigoBarras: validated.codigoBarras || null,
+      ean: validated.ean || null,
+      ncm: validated.ncm || null,
+      unidade: validated.unidade,
+      precoCusto: validated.precoCusto,
+      precoVenda: validated.precoVenda,
+      margemLucro: Math.round(margemLucro * 100) / 100,
+      estoqueAtual: validated.estoqueAtual,
+      estoqueMinimo: validated.estoqueMinimo,
+      fornecedorId: validated.fornecedorId || null,
+      categoria: validated.categoria || null,
+      atualizadoEm: new Date().toISOString(),
+    };
 
-    return NextResponse.json(produto);
+    await db.collection("produtos").doc(params.id).update(data);
+
+    return NextResponse.json({ id: params.id, ...data });
   } catch (error: any) {
     if (error.name === "ZodError") {
       return NextResponse.json(
@@ -82,9 +79,9 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await prisma.produto.update({
-      where: { id: params.id },
-      data: { ativo: false },
+    await db.collection("produtos").doc(params.id).update({
+      ativo: false,
+      atualizadoEm: new Date().toISOString(),
     });
 
     return NextResponse.json({ message: "Produto desativado com sucesso" });

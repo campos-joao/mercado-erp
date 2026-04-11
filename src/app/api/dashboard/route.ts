@@ -1,37 +1,41 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebase";
 
 export async function GET() {
   try {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
+    const hojeISO = hoje.toISOString();
+
     const ontem = new Date(hoje);
     ontem.setDate(ontem.getDate() - 1);
+    const ontemISO = ontem.toISOString();
+
+    // Todas as vendas finalizadas (ordenadas por data desc)
+    const vendasSnap = await db
+      .collection("vendas")
+      .where("status", "==", "finalizada")
+      .orderBy("dataVenda", "desc")
+      .get();
+
+    const todasVendas = vendasSnap.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as any[];
 
     // Vendas de hoje
-    const vendasHoje = await prisma.venda.findMany({
-      where: {
-        dataVenda: { gte: hoje },
-        status: "finalizada",
-      },
-      include: { itens: true },
-    });
-
+    const vendasHoje = todasVendas.filter((v) => v.dataVenda >= hojeISO);
     const totalVendasHoje = vendasHoje.reduce(
-      (acc, v) => acc + Number(v.valorFinal),
+      (acc, v) => acc + Number(v.valorFinal || 0),
       0
     );
 
     // Vendas de ontem
-    const vendasOntem = await prisma.venda.findMany({
-      where: {
-        dataVenda: { gte: ontem, lt: hoje },
-        status: "finalizada",
-      },
-    });
-
+    const vendasOntem = todasVendas.filter(
+      (v) => v.dataVenda >= ontemISO && v.dataVenda < hojeISO
+    );
     const totalVendasOntem = vendasOntem.reduce(
-      (acc, v) => acc + Number(v.valorFinal),
+      (acc, v) => acc + Number(v.valorFinal || 0),
       0
     );
 
@@ -39,39 +43,26 @@ export async function GET() {
     const ticketMedio =
       vendasHoje.length > 0 ? totalVendasHoje / vendasHoje.length : 0;
 
-    // Total de produtos ativos
-    const totalProdutos = await prisma.produto.count({
-      where: { ativo: true },
-    });
+    // Produtos ativos
+    const produtosSnap = await db
+      .collection("produtos")
+      .where("ativo", "==", true)
+      .get();
 
-    // Produtos com estoque baixo
-    const todosOsProdutos = await prisma.produto.findMany({
-      where: { ativo: true },
-      select: {
-        id: true,
-        nome: true,
-        estoqueAtual: true,
-        estoqueMinimo: true,
-      },
-    });
+    const totalProdutos = produtosSnap.size;
 
-    const produtosEstoqueBaixo = todosOsProdutos.filter(
-      (p) => Number(p.estoqueAtual) <= Number(p.estoqueMinimo)
-    );
+    const produtosEstoqueBaixo = produtosSnap.docs
+      .map((doc) => ({ id: doc.id, ...doc.data() } as any))
+      .filter((p) => Number(p.estoqueAtual) <= Number(p.estoqueMinimo));
 
     // NF-e pendentes
-    const nfePendentes = await prisma.entradaNfe.count({
-      where: { status: "pendente" },
-    });
+    const nfePendentesSnap = await db
+      .collection("entradas_nfe")
+      .where("status", "==", "pendente")
+      .get();
 
-    // Últimas vendas
-    const vendasRecentes = await prisma.venda.findMany({
-      include: {
-        itens: true,
-      },
-      orderBy: { dataVenda: "desc" },
-      take: 5,
-    });
+    // Últimas 5 vendas
+    const vendasRecentes = todasVendas.slice(0, 5);
 
     return NextResponse.json({
       vendasHoje: totalVendasHoje,
@@ -80,8 +71,13 @@ export async function GET() {
       ticketMedio,
       totalProdutos,
       estoqueBaixo: produtosEstoqueBaixo.length,
-      nfePendentes,
-      produtosEstoqueBaixo: produtosEstoqueBaixo.slice(0, 5),
+      nfePendentes: nfePendentesSnap.size,
+      produtosEstoqueBaixo: produtosEstoqueBaixo.slice(0, 5).map((p) => ({
+        id: p.id,
+        nome: p.nome,
+        estoqueAtual: p.estoqueAtual,
+        estoqueMinimo: p.estoqueMinimo,
+      })),
       vendasRecentes: vendasRecentes.map((v) => ({
         id: v.id,
         numero: v.numeroVenda,
@@ -90,7 +86,7 @@ export async function GET() {
           hour: "2-digit",
           minute: "2-digit",
         }),
-        itens: v.itens.length,
+        itens: (v.itens || []).length,
       })),
     });
   } catch (error) {
