@@ -1,0 +1,152 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Fornecedor {
+  id                 String               @id @default(uuid())
+  razaoSocial        String               @map("razao_social")
+  nomeFantasia       String?              @map("nome_fantasia")
+  cnpj               String               @unique
+  inscricaoEstadual  String?              @map("inscricao_estadual")
+  telefone           String?
+  email              String?
+  endereco           String?
+  cidade             String?
+  uf                 String?
+  cep                String?
+  ativo              Boolean              @default(true)
+  criadoEm           DateTime             @default(now()) @map("criado_em")
+  atualizadoEm       DateTime             @updatedAt @map("atualizado_em")
+  produtos           Produto[]
+  entradasNfe        EntradaNfe[]
+  mapeamentoProdutos MapeamentoProduto[]
+
+  @@map("fornecedores")
+}
+
+model Produto {
+  id             String          @id @default(uuid())
+  nome           String
+  descricao      String?
+  codigoBarras   String?         @map("codigo_barras")
+  ean            String?
+  ncm            String?
+  unidade        String          @default("UN")
+  precoCusto     Decimal         @default(0) @map("preco_custo") @db.Decimal(10, 2)
+  precoVenda     Decimal         @default(0) @map("preco_venda") @db.Decimal(10, 2)
+  margemLucro    Decimal         @default(0) @map("margem_lucro") @db.Decimal(5, 2)
+  estoqueAtual   Decimal         @default(0) @map("estoque_atual") @db.Decimal(10, 3)
+  estoqueMinimo  Decimal         @default(0) @map("estoque_minimo") @db.Decimal(10, 3)
+  fornecedorId   String?         @map("fornecedor_id")
+  fornecedor     Fornecedor?     @relation(fields: [fornecedorId], references: [id])
+  categoria      String?
+  ativo          Boolean         @default(true)
+  criadoEm       DateTime        @default(now()) @map("criado_em")
+  atualizadoEm   DateTime        @updatedAt @map("atualizado_em")
+  itensNfe       ItemNfe[]
+  itensVenda     ItemVenda[]
+  mapeamentos    MapeamentoProduto[]
+
+  @@index([ean])
+  @@index([codigoBarras])
+  @@index([nome])
+  @@map("produtos")
+}
+
+model EntradaNfe {
+  id            String    @id @default(uuid())
+  numeroNfe     String    @map("numero_nfe")
+  serie         String?
+  chaveAcesso   String?   @unique @map("chave_acesso")
+  fornecedorId  String?   @map("fornecedor_id")
+  fornecedor    Fornecedor? @relation(fields: [fornecedorId], references: [id])
+  dataEmissao   DateTime? @map("data_emissao") @db.Date
+  dataEntrada   DateTime  @default(now()) @map("data_entrada")
+  valorTotal    Decimal   @default(0) @map("valor_total") @db.Decimal(12, 2)
+  valorIcms     Decimal   @default(0) @map("valor_icms") @db.Decimal(12, 2)
+  valorIpi      Decimal   @default(0) @map("valor_ipi") @db.Decimal(12, 2)
+  xmlUrl        String?   @map("xml_url")
+  status        String    @default("pendente")
+  processadoPor String?   @map("processado_por")
+  criadoEm      DateTime  @default(now()) @map("criado_em")
+  atualizadoEm  DateTime  @updatedAt @map("atualizado_em")
+  itens         ItemNfe[]
+
+  @@map("entradas_nfe")
+}
+
+model ItemNfe {
+  id               String     @id @default(uuid())
+  entradaNfeId     String     @map("entrada_nfe_id")
+  entradaNfe       EntradaNfe @relation(fields: [entradaNfeId], references: [id], onDelete: Cascade)
+  produtoId        String?    @map("produto_id")
+  produto          Produto?   @relation(fields: [produtoId], references: [id])
+  nomeXml          String     @map("nome_xml")
+  codigoXml        String?    @map("codigo_xml")
+  eanXml           String?    @map("ean_xml")
+  ncmXml           String?    @map("ncm_xml")
+  quantidade       Decimal    @db.Decimal(10, 3)
+  unidadeXml       String?    @map("unidade_xml")
+  valorUnitario    Decimal?   @map("valor_unitario") @db.Decimal(10, 4)
+  valorTotal       Decimal?   @map("valor_total") @db.Decimal(12, 2)
+  mapeamentoStatus String     @default("pendente") @map("mapeamento_status")
+  confiancaIa      Decimal?   @map("confianca_ia") @db.Decimal(5, 2)
+  criadoEm         DateTime   @default(now()) @map("criado_em")
+
+  @@index([entradaNfeId])
+  @@map("itens_nfe")
+}
+
+model MapeamentoProduto {
+  id                String      @id @default(uuid())
+  nomeFornecedor    String      @map("nome_fornecedor")
+  codigoFornecedor  String?     @map("codigo_fornecedor")
+  fornecedorId      String?     @map("fornecedor_id")
+  fornecedor        Fornecedor? @relation(fields: [fornecedorId], references: [id])
+  produtoId         String?     @map("produto_id")
+  produto           Produto?    @relation(fields: [produtoId], references: [id])
+  confianca         Decimal     @default(0) @db.Decimal(5, 2)
+  confirmado        Boolean     @default(false)
+  criadoEm          DateTime    @default(now()) @map("criado_em")
+  atualizadoEm      DateTime    @updatedAt @map("atualizado_em")
+
+  @@index([nomeFornecedor, fornecedorId])
+  @@map("mapeamento_produtos")
+}
+
+model Venda {
+  id              String      @id @default(uuid())
+  numeroVenda     Int         @default(autoincrement()) @map("numero_venda")
+  dataVenda       DateTime    @default(now()) @map("data_venda")
+  valorTotal      Decimal     @default(0) @map("valor_total") @db.Decimal(12, 2)
+  valorDesconto   Decimal     @default(0) @map("valor_desconto") @db.Decimal(12, 2)
+  valorFinal      Decimal     @default(0) @map("valor_final") @db.Decimal(12, 2)
+  formaPagamento  String?     @map("forma_pagamento")
+  status          String      @default("finalizada")
+  observacoes     String?
+  criadoEm        DateTime    @default(now()) @map("criado_em")
+  itens           ItemVenda[]
+
+  @@map("vendas")
+}
+
+model ItemVenda {
+  id             String   @id @default(uuid())
+  vendaId        String   @map("venda_id")
+  venda          Venda    @relation(fields: [vendaId], references: [id], onDelete: Cascade)
+  produtoId      String   @map("produto_id")
+  produto        Produto  @relation(fields: [produtoId], references: [id])
+  quantidade     Decimal  @db.Decimal(10, 3)
+  precoUnitario  Decimal  @map("preco_unitario") @db.Decimal(10, 2)
+  desconto       Decimal  @default(0) @db.Decimal(10, 2)
+  subtotal       Decimal  @db.Decimal(12, 2)
+  criadoEm       DateTime @default(now()) @map("criado_em")
+
+  @@index([vendaId])
+  @@map("itens_venda")
+}
