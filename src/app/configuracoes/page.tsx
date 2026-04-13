@@ -19,7 +19,7 @@ export default function ConfiguracoesPage() {
               <Database className="h-5 w-5" />
               Banco de Dados
             </CardTitle>
-            <CardDescription>Conexão com Supabase</CardDescription>
+            <CardDescription>Conexão com Firestore</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
@@ -71,7 +71,7 @@ export default function ConfiguracoesPage() {
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
-              <span className="text-sm">Supabase Auth</span>
+              <span className="text-sm">Firebase Auth</span>
               <Badge variant="secondary">Em breve</Badge>
             </div>
           </CardContent>
