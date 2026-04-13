@@ -15,9 +15,10 @@ import { cn } from "@/lib/utils";
 
 const menuItems = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
+  { label: "PDV", href: "/pdv", icon: ShoppingCart },
   { label: "Produtos", href: "/produtos", icon: Package },
   { label: "Entrada NF-e", href: "/nfe", icon: FileText },
-  { label: "Vendas", href: "/vendas", icon: ShoppingCart },
+  { label: "Vendas", href: "/vendas", icon: FileText },
   { label: "Fornecedores", href: "/fornecedores", icon: Users },
   { label: "Configurações", href: "/configuracoes", icon: Settings },
 ];
